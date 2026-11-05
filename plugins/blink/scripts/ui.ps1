@@ -104,7 +104,7 @@ $CARD_BORDER = @'
     </Border>
     <StackPanel Grid.Column="1" Margin="14,1,6,0">
       <DockPanel x:Name="AgentRow">
-        <Ellipse x:Name="Dot" Width="8" Height="8" Margin="0,0,7,0" VerticalAlignment="Center"/>
+        <Ellipse x:Name="Dot" Width="8" Height="8" Margin="0,0,7,0" VerticalAlignment="Center" UseLayoutRounding="False"/>
         <TextBlock x:Name="Agent" FontFamily="Cascadia Mono, Consolas" FontSize="10.5" Foreground="#85847F" TextTrimming="CharacterEllipsis"/>
       </DockPanel>
       <TextBlock x:Name="Session" FontSize="12.5" Foreground="#C9C7C1" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" Visibility="Collapsed"/>
@@ -348,7 +348,7 @@ function Prune {                         # a session that went quiet without say
   if ($gone) { Update-Dock (Read-Conf) }
 }
 $DOCK_XAML = @'
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" WindowStyle="None" AllowsTransparency="True" Background="Transparent" Topmost="True" ShowInTaskbar="False" ShowActivated="False" ResizeMode="NoResize" Width="460" Height="560" Focusable="False" UseLayoutRounding="True">
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" WindowStyle="None" AllowsTransparency="True" Background="Transparent" Topmost="True" ShowInTaskbar="False" ShowActivated="False" ResizeMode="NoResize" Width="460" Height="560" Focusable="False" UseLayoutRounding="False">
   <Grid x:Name="Root"><Rectangle x:Name="Zone" Fill="#01000000" Visibility="Collapsed"/>
   <Border x:Name="Pill" Width="110" BorderBrush="#2C2C32" ClipToBounds="True" Cursor="Hand" TextElement.FontFamily="Segoe UI Variable Text, Segoe UI">
     <Border.RenderTransform><TranslateTransform x:Name="Drop"/></Border.RenderTransform>
@@ -424,12 +424,12 @@ function Ago($t) { $m = [int]([DateTime]::Now - $t).TotalMinutes; if ($m -lt 1) 
 function Dock-Rows {
   $list = $script:DockWin.FindName('List'); $list.Children.Clear(); $i = 0
   foreach ($s in $sessions.Values) {
-    $b = New-Object Windows.Controls.Border; $b.CornerRadius = 11; $b.Padding = '12,8'; $b.Background = Brush $(if ($s.state -eq 'ask') { '#26FF7A12' } else { '#16161A' })
+    $b = New-Object Windows.Controls.Border; $b.CornerRadius = 11; $b.Padding = '12,8'; $b.Background = Brush $(if ($s.state -eq 'ask') { '#33FF7A12' } else { '#1F1F24' })
     $down = $script:DockWin.FindName('Pill').VerticalAlignment -eq 'Top'; $last = $i -eq $sessions.Count - 1   # the outer gap matches the sides, whichever way the list opens
     $b.Margin = $(if ($down) { if ($last) { '0,0,0,12' } else { '0,0,0,4' } } else { if ($i -eq 0) { '0,12,0,4' } else { '0,0,0,4' } })
     $g = New-Object Windows.Controls.Grid
     foreach ($wd in 'Auto', '*', 'Auto') { $cd = New-Object Windows.Controls.ColumnDefinition; $cd.Width = $wd; [void]$g.ColumnDefinitions.Add($cd) }
-    $dot = New-Object Windows.Shapes.Ellipse; $dot.Width = 11; $dot.Height = 11; $dot.Fill = Brush $s.color; $dot.Margin = '0,0,10,0'; $dot.Cursor = 'Hand'; $dot.Tag = $s.key; $dot.ToolTip = 'Change colour'
+    $dot = New-Object Windows.Shapes.Ellipse; $dot.Width = 12; $dot.Height = 12; $dot.Fill = Brush $s.color; $dot.Margin = '0,0,10,0'; $dot.Cursor = 'Hand'; $dot.Tag = $s.key; $dot.ToolTip = 'Change colour'
     $dot.Add_MouseLeftButtonUp({ param($x) Next-Color $x.Tag }); [void]$g.Children.Add($dot)
     $sp = New-Object Windows.Controls.StackPanel; $sp.VerticalAlignment = 'Center'; [Windows.Controls.Grid]::SetColumn($sp, 1)
     $name = if ($s.session) { $s.session } elseif ($s.project) { $s.project } else { $s.agent }
@@ -463,7 +463,7 @@ function Next-Color($key) {
 function Dock-Dots {
   $d = $script:DockWin.FindName('Dots'); $d.Children.Clear(); $ask = $false
   foreach ($s in $sessions.Values) {
-    $e = New-Object Windows.Shapes.Ellipse; $e.Width = 9; $e.Height = 9; $e.Margin = '3,0,3,0'; $e.Fill = Brush $s.color; $e.RenderTransformOrigin = '0.5,0.5'
+    $e = New-Object Windows.Shapes.Ellipse; $e.Width = 10; $e.Height = 10; $e.Margin = '2.5,0,2.5,0'; $e.Fill = Brush $s.color; $e.RenderTransformOrigin = '0.5,0.5'
     if ($s.state -eq 'done') { $e.Opacity = .35 }
     if ($s.state -eq 'ask') { $ask = $true                                   # whoever needs you breathes, like the eyes
       $a = Anim 1 .35 800 0 (New-Object Windows.Media.Animation.SineEase); $a.AutoReverse = $true; $a.RepeatBehavior = [Windows.Media.Animation.RepeatBehavior]::Forever

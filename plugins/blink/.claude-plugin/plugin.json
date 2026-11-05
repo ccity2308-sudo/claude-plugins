@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "blink",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "description": "A sound and a small card when Claude Code or Codex needs you or is done, with Allow / Deny right on the card. Stop babysitting the terminal.",
   "author": { "name": "n.cloud", "email": "get.ncloud@gmail.com", "url": "https://getncloud.com" },
   "homepage": "https://getncloud.com",
