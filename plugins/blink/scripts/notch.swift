@@ -116,8 +116,9 @@ final class Island: NSView {
     var onHover: (Bool) -> Void = { _ in }
     override func draw(_ r: NSRect) {
         NSColor.black.setFill()
-        NSBezierPath(roundedRect: bounds, xRadius: 20, yRadius: 20).fill()
-        NSRect(x: 0, y: bounds.height - 22, width: bounds.width, height: 22).fill()   // square top: it merges into the notch
+        let r = min(20, bounds.height * 0.4)
+        NSBezierPath(roundedRect: bounds, xRadius: r, yRadius: r).fill()
+        NSRect(x: 0, y: r, width: bounds.width, height: bounds.height - r).fill()     // square top: it merges into the notch
     }
     override func acceptsFirstMouse(for e: NSEvent?) -> Bool { true }
     override func updateTrackingAreas() {
