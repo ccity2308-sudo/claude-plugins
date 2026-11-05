@@ -5,6 +5,8 @@ Stop babysitting the terminal. **Blink** plays a soft sound and shows a small ca
 - 🟠 **needs you**: a permission prompt ("Allow this command?") or a question;
 - 🔵 **is done** with a long turn.
 
+<p align="center"><img src="docs/card_allow.webp" width="420" alt="The Blink card with Allow and Deny"></p>
+
 On Windows the card is Blink's own: two eyes that breathe orange while the agent waits and blink blue when it is done, the agent, the project and the session name, the exact command it wants to run, and **Allow / Deny right on the card** (quick replies, only for commands the card shows in full). It never steals focus. On a Mac with a notch it grows out of the notch (beta: built on first use with the Xcode command line tools, otherwise a regular notification). On Linux it uses the system notification.
 
 Smart about it: it rings once per prompt (no double pings), stays quiet after quick answers you were watching anyway (finished in under 30 s), and skips the "still waiting" reminder right after a "done".
@@ -12,6 +14,8 @@ Smart about it: it rings once per prompt (no double pings), stays quiet after qu
 No dependencies, no network, no telemetry. A shell script plus, on Windows, one PowerShell helper you can read.
 
 ## Many agents at once
+
+<p align="center"><img src="docs/bar_list.webp" width="520" alt="The agent bar with four agents, each in its own colour"></p>
 
 Run as many agents as you like. Each one gets its own colour, and a small bar at the top of the screen shows one dot per agent: it breathes when that agent needs you and fades when it is done. Hover to see them all, what each one is doing and for how long, and answer from the list. Click a dot to change the colour; it stays with that project.
 
@@ -35,6 +39,8 @@ Then `/blink:test` to see and hear both cards, `/blink:settings` to tune it, `/b
 Using the Claude desktop app? Turn its own banners off in Settings → Claude Code → Notifications, so only Blink pops up.
 
 ## Settings
+
+<p align="center"><img src="docs/settings_agents.webp" width="720" alt="Blink settings: agent bar"></p>
 
 `/blink:settings` opens the settings window on Windows, also in Start as **Blink**. It saves as you go and shows a live preview of the card. Per agent: what to be called for (permission prompts, questions, finishing a task and how long it must have worked), the sound (Marimba, Soft tones, Desk bell, your Windows sounds, your own .wav or .mp3, or none) and the Allow / Deny buttons with how long to wait for a click. For the card: on or sound only, top right, top center or bottom right, how long it stays, and hiding the command while you stream. Volume and quiet hours.
 
