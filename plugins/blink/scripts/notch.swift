@@ -139,7 +139,7 @@ panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary
 let island = Island(frame: panel.contentLayoutRect); island.wantsLayer = true; island.autoresizingMask = [.width, .height]
 panel.contentView = island
 
-var hovering = false, open = false, leaveAt = Date.distantFuture, lastActivity = Date(), popKeys = Set<String>()
+var hovering = false, isOpen = false, leaveAt = Date.distantFuture, lastActivity = Date(), popKeys = Set<String>()
 
 func barHeight(_ s: NSScreen) -> CGFloat { max(s.safeAreaInsets.top, 28) }
 func notchWidth(_ s: NSScreen) -> CGFloat {
@@ -160,18 +160,18 @@ func ago(_ d: Date) -> String { let m = Int(Date().timeIntervalSince(d) / 60); r
 
 func render() {
     island.subviews.forEach { $0.removeFromSuperview() }
-    if agents.isEmpty { panel.orderOut(nil); open = false; return }
+    if agents.isEmpty { panel.orderOut(nil); isOpen = false; return }
     let s = notchScreen(), bar = barHeight(s), notch = notchWidth(s)
     let asking = agents.first { $0.waiting }
-    let wasOpen = open; open = hovering || asking != nil
+    let wasOpen = isOpen; isOpen = hovering || asking != nil
     let ear: CGFloat = 16, dotsW = CGFloat(agents.count) * 15
     let side = max(52, dotsW) + ear                                                   // both ears the same: the notch stays centred
     let closedW = notch > 0 ? notch + side * 2 : 62 + dotsW + 16
-    let w = open ? max(closedW, 460) : closedW
-    var rows: [Agent] = []; if open { rows = hovering ? agents : (asking.map { [$0] } ?? []) }
+    let w = isOpen ? max(closedW, 460) : closedW
+    var rows: [Agent] = []; if isOpen { rows = hovering ? agents : (asking.map { [$0] } ?? []) }
     let cardH: CGFloat = (!hovering && asking != nil) ? (asking!.command.isEmpty ? 104 : 132) : 0
     let listH = hovering ? CGFloat(agents.count) * 54 + 10 : 0
-    let h = bar + (open ? cardH + listH : 0)
+    let h = bar + (isOpen ? cardH + listH : 0)
     place(w, h, animated: panel.isVisible)
     if !panel.isVisible { panel.orderFrontRegardless() }
     island.frame = NSRect(x: 0, y: 0, width: w, height: h); island.needsDisplay = true
@@ -283,7 +283,7 @@ func poll() {
         try? fm.removeItem(atPath: p); handle(e); changed = true
     }
     if Date() > leaveAt { leaveAt = .distantFuture; hovering = false; changed = true }
-    if open, !hovering, !agents.contains(where: { $0.waiting }) { changed = true }    // the wait ran out: fold back
+    if isOpen, !hovering, !agents.contains(where: { $0.waiting }) { changed = true }    // the wait ran out: fold back
     if changed { render() }
 }
 Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in poll() }
