@@ -26,7 +26,7 @@ The Blink icon sits by the clock on Windows and in the menu bar on a Mac: settin
 ## Install
 
 ```
-/plugin marketplace add getncloud/claude-plugins
+/plugin marketplace add ccity2308-sudo/claude-plugins
 /plugin install blink@ncloud
 ```
 
