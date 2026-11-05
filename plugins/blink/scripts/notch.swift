@@ -221,8 +221,9 @@ func render() {
             let c = label("$ " + a.command, 11.5, rgb("#E6E4DF"), mono: true); c.frame = NSRect(x: 9, y: 5, width: w - 58, height: 16); box.addSubview(c)
             parts.append(box); bottom -= 32
         }
-        var bx: CGFloat = 20
-        if a.allow { parts.append(Button("Allow", fill: orange, ink: rgb("#111113"), frame: NSRect(x: bx, y: bottom - 30, width: 76, height: 28)) { answer(a, "allow") }); bx += 84 }
+        var bx: CGFloat = 20   // Allow needs the whole command on screen: a cut-off line could hide what runs
+        let shown = ("$ " + a.command as NSString).size(withAttributes: [.font: NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular)]).width <= w - 62
+        if a.allow && shown { parts.append(Button("Allow", fill: orange, ink: rgb("#111113"), frame: NSRect(x: bx, y: bottom - 30, width: 76, height: 28)) { answer(a, "allow") }); bx += 84 }
         parts.append(Button("Deny", fill: rgb("#1E1E22"), ink: .white, frame: NSRect(x: bx, y: bottom - 30, width: 76, height: 28)) { answer(a, "deny") }); bx += 84
         parts.append(Button("In terminal", fill: .clear, ink: NSColor(white: 0.55, alpha: 1), frame: NSRect(x: bx, y: bottom - 30, width: 92, height: 28)) { answer(a, "terminal") })
         for (i, p) in parts.enumerated() { island.addSubview(p); if !wasOpen { rise(p, delay: 0.03 + Double(i) * 0.02) } }
@@ -242,9 +243,8 @@ func render() {
             t2.frame = NSRect(x: 33, y: 8, width: w - 210, height: 15)
             row.addSubview(t1); row.addSubview(t2)
             if a.waiting {
-                var bx = w - 20 - 10 - 58
-                row.addSubview(Button("Deny", fill: rgb("#1E1E22"), ink: .white, frame: NSRect(x: bx, y: 11, width: 58, height: 26)) { answer(a, "deny") })
-                if a.allow { bx -= 64; row.addSubview(Button("Allow", fill: orange, ink: rgb("#111113"), frame: NSRect(x: bx, y: 11, width: 58, height: 26)) { answer(a, "allow") }) }
+                // no Allow here: the row does not show the command. Move away and the request shows it whole.
+                row.addSubview(Button("Deny", fill: rgb("#1E1E22"), ink: .white, frame: NSRect(x: w - 20 - 10 - 58, y: 11, width: 58, height: 26)) { answer(a, "deny") })
             }
             island.addSubview(row); if !wasOpen { rise(row, delay: 0.02 + Double(i) * 0.02) }
             ry -= 54

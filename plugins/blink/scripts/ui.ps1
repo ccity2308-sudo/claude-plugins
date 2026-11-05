@@ -370,7 +370,7 @@ function Dock-Size {                     # always from where it is now, so a qui
   $c = $script:DC; $p = $script:DockWin.FindName('Pill'); $l = $script:DockWin.FindName('List')
   $open = $script:DockOpen -and $sessions.Count -gt 0
   $p.BeginAnimation([Windows.FrameworkElement]::WidthProperty, (AnimTo $(if ($open) { 440 } else { Dock-Width $sessions.Count $c }) 200))
-  $l.BeginAnimation([Windows.FrameworkElement]::MaxHeightProperty, (AnimTo $(if ($open) { $sessions.Count * 56 + 8 } else { 0 }) 200))
+  $l.BeginAnimation([Windows.FrameworkElement]::MaxHeightProperty, (AnimTo $(if ($open) { $extra = 0; foreach ($x in $sessions.Values) { if ($x.state -eq 'ask' -and $x.allow -and $x.text) { $extra += 20 * [math]::Ceiling($x.text.Length / 38) + 6 } }; $sessions.Count * 56 + 8 + $extra } else { 0 }) 200))
 }
 function Dock-Spots {                    # where the bar's middle and top edge sit in each of the six places
   $wa = [Windows.SystemParameters]::WorkArea; $k = [double]$script:DC['dock_size'] / 100; $h = 30 * $k; $m = 10
@@ -430,6 +430,7 @@ function Dock-Rows {
     $what = switch ($s.state) { 'ask' { 'needs you' } 'work' { 'working' } default { 'finished' } }
     $dotc = [string][char]0xB7
     $t2 = T "$who $dotc $(if ($s.project) { "$($s.project) $dotc " })$what $dotc $(Ago $s.since)" 11 $(if ($s.state -eq 'ask') { '#FF9A4D' } else { '#85847F' }); $t2.TextWrapping = 'NoWrap'; $t2.TextTrimming = 'CharacterEllipsis'; [void]$sp.Children.Add($t2)
+    if ($s.state -eq 'ask' -and $s.allow -and $s.text) { $t3 = T ('$ ' + $s.text) 11.5 '#E6E4DF'; $t3.FontFamily = 'Cascadia Mono, Consolas'; $t3.Margin = '0,4,0,0'; [void]$sp.Children.Add($t3) }   # Allow here only with the whole command in view
     [void]$g.Children.Add($sp)
     if ($s.state -eq 'ask' -and $s.reply -and [DateTime]::Now -lt $s.replyEnd) {   # the same answers as on the card, and Allow only where the card offers it
       $btns = New-Object Windows.Controls.StackPanel; $btns.Orientation = 'Horizontal'; $btns.Margin = '10,0,0,0'; $btns.VerticalAlignment = 'Center'; [Windows.Controls.Grid]::SetColumn($btns, 2)
