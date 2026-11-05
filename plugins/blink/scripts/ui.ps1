@@ -30,7 +30,10 @@ $DEFAULTS = [ordered]@{ 'claude.enabled' = '1'; 'claude.theme' = 'eyes'; 'claude
                         'codex.custom_ask' = ''; 'codex.custom_done' = ''; 'link_target' = ''
                         'codex.enabled' = '1'; 'codex.theme' = 'glass'; 'codex.done_after' = '0'
                         'popup' = '1'; 'position' = 'top-right'; 'volume' = '70'
-                        'card_ask' = '25'; 'card_done' = '8'; 'show_cmd' = '1'; 'quiet' = 'off'; 'mac.style' = 'notch'; 'dock' = '1' }
+                        'card_ask' = '25'; 'card_done' = '8'; 'show_cmd' = '1'; 'quiet' = 'off'; 'mac.style' = 'notch'; 'dock' = '1'
+                        'dock_pos' = 'top-center'; 'dock_x' = ''; 'dock_y' = ''; 'dock_size' = '100'; 'dock_alpha' = '100'; 'dock_round' = '18'; 'dock_bg' = 'black'
+                        'dock_eyes' = '1'; 'dock_when' = 'always'; 'dock_open' = 'hover'; 'dock_lock' = '0'
+                        'anim' = '1'; 'anim_speed' = '100'; 'card_size' = '100'; 'card_alpha' = '100'; 'eye_ask' = '#FF7A12'; 'eye_work' = '#4DA3FF' }
 function Read-Conf {
   $c = [ordered]@{}; foreach ($k in $DEFAULTS.Keys) { $c[$k] = $DEFAULTS[$k] }
   if (Test-Path $conf) { foreach ($l in [IO.File]::ReadAllLines($conf)) { if ($l -match '^\s*([\w.\-]+)=(.*)$') { $c[$Matches[1]] = $Matches[2].Trim() } } }
@@ -140,7 +143,7 @@ function Brush($hex) { New-Object Windows.Media.SolidColorBrush ([Windows.Media.
 function Color($hex) { [Windows.Media.ColorConverter]::ConvertFromString($hex) }
 
 function Fill-Card($el, $e, $c, $d) {   # $el: the card window or a bare card Border (the settings preview)
-  $ask = $e.kind -eq 'ask'; $col = if ($ask) { $OR } else { $BLUE }
+  $ask = $e.kind -eq 'ask'; $col = if ($ask) { $c['eye_ask'] } else { $c['eye_work'] }
   $tint = if ($e.color) { $e.color } else { $PALETTE[0] }                  # eyes keep the state colours, the agent's own colour marks the card
   $el.FindName('Dot').Fill = Brush $tint; $el.FindName('Accent').Fill = Brush $tint; $el.FindName('Bar').Fill = Brush $tint
   $label = if ($e.agent -eq 'codex') { 'CODEX' } else { 'CLAUDE CODE' }
@@ -177,13 +180,14 @@ function Fill-Card($el, $e, $c, $d) {   # $el: the card window or a bare card Bo
 
 function Card-Left($w, $c) {
   $wa = [Windows.SystemParameters]::WorkArea
-  if ($c['position'] -eq 'top-center') { $wa.Left + ($wa.Width - $w.Width) / 2 } else { $wa.Right - $w.Width }
+  if ($c['position'] -like '*-center') { $wa.Left + ($wa.Width - $w.Width) / 2 } elseif ($c['position'] -like '*-left') { $wa.Left } else { $wa.Right - $w.Width }
 }
 function Layout-Cards($c) {
   # Top right by default: Windows (and the Claude app's own) notifications pile up bottom right and would cover the card.
   # 40 px down keeps window title-bar buttons clickable; "top-center" sits like an island at the top edge.
-  $wa = [Windows.SystemParameters]::WorkArea; $top = $c['position'] -ne 'bottom-right'
-  $y = if ($c['position'] -eq 'top-center') { $wa.Top + $(if ($script:DockWin -and $script:DockWin.IsVisible) { 34 } else { 0 }) } elseif ($top) { $wa.Top + 40 } else { $wa.Bottom - 4 }
+  $wa = [Windows.SystemParameters]::WorkArea; $top = $c['position'] -like 'top-*'
+  $under = if ($script:DockWin -and $script:DockWin.IsVisible -and $c['dock_pos'] -eq $c['position']) { 34 * [double]$c['dock_size'] / 100 } else { 0 }   # never on top of the bar
+  $y = if ($c['position'] -eq 'top-center') { $wa.Top + $under } elseif ($top) { $wa.Top + 40 + $under } else { $wa.Bottom - 4 - $under }
   foreach ($w in $cards) {
     $h = if ($w.ActualHeight -gt 0) { $w.ActualHeight } else { 120 }
     $w.Left = Card-Left $w $c; $w.Top = if ($top) { $y } else { $y - $h }
@@ -207,16 +211,20 @@ function Blink-Eyes($el, $times) {     # the eyes close and open, like the pad s
     $st.BeginAnimation([Windows.Media.ScaleTransform]::ScaleYProperty, $k)
   }
 }
-function Ease-Out { $x = New-Object Windows.Media.Animation.ExponentialEase; $x.EasingMode = 'EaseOut'; $x.Exponent = 5; $x }   # the site's expo.out
+function Ease-Out { $x = New-Object Windows.Media.Animation.ExponentialEase; $x.EasingMode = 'EaseOut'; $x.Exponent = 4; $x }   # the site's expo.out
 function Ms($v) { [TimeSpan]::FromMilliseconds($v) }
+$script:AnimK = 1.0
 function Anim($from, $to, $ms, $delay = 0, $ease = $null) {
-  $a = New-Object Windows.Media.Animation.DoubleAnimation($from, $to, (Ms $ms)); $a.BeginTime = Ms $delay
+  $a = New-Object Windows.Media.Animation.DoubleAnimation($from, $to, (Ms ($ms * $script:AnimK))); $a.BeginTime = Ms ($delay * $script:AnimK)
   if ($ease) { $a.EasingFunction = $ease }; $a
+}
+function AnimTo($to, $ms) {             # from wherever it is now: reversing halfway never jumps
+  $a = New-Object Windows.Media.Animation.DoubleAnimation; $a.To = $to; $a.Duration = New-Object Windows.Duration (Ms ($ms * $script:AnimK)); $a.EasingFunction = Ease-Out; $a
 }
 function Rise($el, $dy, $ms, $delay) {  # fade in while rising into place, after $delay ms
   $tt = New-Object Windows.Media.TranslateTransform; $tt.Y = $dy; $el.RenderTransform = $tt; $el.Opacity = 0
   $tt.BeginAnimation([Windows.Media.TranslateTransform]::YProperty, (Anim $dy 0 $ms $delay (Ease-Out)))
-  $el.BeginAnimation([Windows.UIElement]::OpacityProperty, (Anim 0 1 ($ms * .6) $delay))
+  $el.BeginAnimation([Windows.UIElement]::OpacityProperty, (Anim 0 1 ($ms * .55) $delay))
 }
 function Letters($w, $text, $delay) {   # the title comes up letter by letter from behind a mask, like the headlines on the site
   $fx = $w.FindName('TitleFx'); $fx.Children.Clear(); $w.FindName('Title').Visibility = 'Hidden'; $fx.Visibility = 'Visible'; $i = 0
@@ -224,40 +232,40 @@ function Letters($w, $text, $delay) {   # the title comes up letter by letter fr
     $t = New-Object Windows.Controls.TextBlock; $t.Text = $(if ($ch -eq ' ') { [string][char]0xA0 } else { [string]$ch })
     $t.FontSize = 16; $t.FontWeight = 'SemiBold'; $t.Foreground = Brush '#F2F1EE'
     $tt = New-Object Windows.Media.TranslateTransform; $tt.Y = 24; $t.RenderTransform = $tt
-    $tt.BeginAnimation([Windows.Media.TranslateTransform]::YProperty, (Anim 24 0 520 ($delay + $i * 20) (Ease-Out)))
+    $tt.BeginAnimation([Windows.Media.TranslateTransform]::YProperty, (Anim 24 0 300 ($delay + $i * 11) (Ease-Out)))
     [void]$fx.Children.Add($t); $i++
   }
 }
-function Enter-Card($w, $e, $center) {  # the card lands, its colour bar draws down, then the content comes up in order
-  $zoom = $w.FindName('Zoom'); $slide = $w.FindName('Slide')
-  foreach ($p in [Windows.Media.ScaleTransform]::ScaleXProperty, [Windows.Media.ScaleTransform]::ScaleYProperty) { $zoom.BeginAnimation($p, (Anim .93 1 460 0 (Ease-Out))) }
-  $slide.BeginAnimation($(if ($center) { [Windows.Media.TranslateTransform]::YProperty } else { [Windows.Media.TranslateTransform]::XProperty }), (Anim $(if ($center) { -22 } else { 44 }) 0 460 0 (Ease-Out)))
-  $w.BeginAnimation([Windows.UIElement]::OpacityProperty, (Anim 0 1 200))
+function Enter-Card($w, $e, $pos) {  # the card lands, its colour bar draws down, then the content comes up in order
+  $center = $pos -like '*-center'; $zoom = $w.FindName('Zoom'); $slide = $w.FindName('Slide')
+  foreach ($p in [Windows.Media.ScaleTransform]::ScaleXProperty, [Windows.Media.ScaleTransform]::ScaleYProperty) { $zoom.BeginAnimation($p, (Anim .95 1 260 0 (Ease-Out))) }
+  $slide.BeginAnimation($(if ($center) { [Windows.Media.TranslateTransform]::YProperty } else { [Windows.Media.TranslateTransform]::XProperty }), (Anim $(if ($center) { -18 } elseif ($pos -like '*-left') { -36 } else { 36 }) 0 260 0 (Ease-Out)))
+  $w.BeginAnimation([Windows.UIElement]::OpacityProperty, (Anim 0 1 130))
   $acc = $w.FindName('Accent'); $st = New-Object Windows.Media.ScaleTransform; $acc.RenderTransform = $st
-  $st.BeginAnimation([Windows.Media.ScaleTransform]::ScaleYProperty, (Anim 0 1 620 60 (Ease-Out)))
-  Letters $w $e.title 110
-  $d = 60
+  $st.BeginAnimation([Windows.Media.ScaleTransform]::ScaleYProperty, (Anim 0 1 340 30 (Ease-Out)))
+  Letters $w $e.title 50
+  $d = 30
   foreach ($n in 'AgentRow', 'Session', 'Msg', 'CmdBox', 'Why', 'Quick') {
     $el = $w.FindName($n); if ($el.Visibility -ne 'Visible') { continue }
-    Rise $el 12 460 $d; $d += $(if ($n -eq 'Session') { 170 } else { 60 })
+    Rise $el 10 260 $d; $d += $(if ($n -eq 'Session') { 90 } else { 30 })
   }
 }
 function Press($el) {                   # buttons sink a little under the finger and spring back
   $el.RenderTransformOrigin = '0.5,0.5'; $el.RenderTransform = New-Object Windows.Media.ScaleTransform
-  $el.Add_MouseEnter({ param($s) $s.BeginAnimation([Windows.UIElement]::OpacityProperty, (Anim 1 .82 120)) })
-  $el.Add_MouseLeave({ param($s) $s.BeginAnimation([Windows.UIElement]::OpacityProperty, (Anim .82 1 160))
-    foreach ($p in [Windows.Media.ScaleTransform]::ScaleXProperty, [Windows.Media.ScaleTransform]::ScaleYProperty) { $s.RenderTransform.BeginAnimation($p, (Anim $s.RenderTransform.ScaleX 1 160)) } })
-  $el.Add_PreviewMouseLeftButtonDown({ param($s) foreach ($p in [Windows.Media.ScaleTransform]::ScaleXProperty, [Windows.Media.ScaleTransform]::ScaleYProperty) { $s.RenderTransform.BeginAnimation($p, (Anim 1 .93 90)) } })
+  $el.Add_MouseEnter({ param($s) $s.BeginAnimation([Windows.UIElement]::OpacityProperty, (Anim 1 .85 70)) })
+  $el.Add_MouseLeave({ param($s) $s.BeginAnimation([Windows.UIElement]::OpacityProperty, (Anim .85 1 90))
+    foreach ($p in [Windows.Media.ScaleTransform]::ScaleXProperty, [Windows.Media.ScaleTransform]::ScaleYProperty) { $s.RenderTransform.BeginAnimation($p, (Anim $s.RenderTransform.ScaleX 1 90)) } })
+  $el.Add_PreviewMouseLeftButtonDown({ param($s) foreach ($p in [Windows.Media.ScaleTransform]::ScaleXProperty, [Windows.Media.ScaleTransform]::ScaleYProperty) { $s.RenderTransform.BeginAnimation($p, (Anim 1 .93 50)) } })
   $el.Add_PreviewMouseLeftButtonUp({ param($s) $b = New-Object Windows.Media.Animation.BackEase; $b.EasingMode = 'EaseOut'; $b.Amplitude = .6
-    foreach ($p in [Windows.Media.ScaleTransform]::ScaleXProperty, [Windows.Media.ScaleTransform]::ScaleYProperty) { $s.RenderTransform.BeginAnimation($p, (Anim .93 1 260 0 $b)) } })
+    foreach ($p in [Windows.Media.ScaleTransform]::ScaleXProperty, [Windows.Media.ScaleTransform]::ScaleYProperty) { $s.RenderTransform.BeginAnimation($p, (Anim .93 1 170 0 $b)) } })
 }
 function Close-Card($w) {              # shrink and fade first; the timer comes back to really close it
   if (-not $cards.Contains($w)) { return }
-  if (-not $w.Tag.closing) { $w.Tag.closing = $true; $w.Tag.until = [DateTime]::Now.AddMilliseconds(240)
+  if (-not $w.Tag.closing) { $w.Tag.closing = $true; $w.Tag.until = [DateTime]::Now.AddMilliseconds(150 * $script:AnimK + 20)
     $in = New-Object Windows.Media.Animation.CubicEase; $in.EasingMode = 'EaseIn'
-    $z = $w.FindName('Zoom'); foreach ($p in [Windows.Media.ScaleTransform]::ScaleXProperty, [Windows.Media.ScaleTransform]::ScaleYProperty) { $z.BeginAnimation($p, (Anim 1 .95 220 0 $in)) }
-    $w.FindName('Slide').BeginAnimation([Windows.Media.TranslateTransform]::YProperty, (Anim 0 -8 220 0 $in))
-    $w.BeginAnimation([Windows.UIElement]::OpacityProperty, (Anim 1 0 220 0 $in)); return }
+    $z = $w.FindName('Zoom'); foreach ($p in [Windows.Media.ScaleTransform]::ScaleXProperty, [Windows.Media.ScaleTransform]::ScaleYProperty) { $z.BeginAnimation($p, (Anim 1 .96 140 0 $in)) }
+    $w.FindName('Slide').BeginAnimation([Windows.Media.TranslateTransform]::YProperty, (Anim 0 -6 140 0 $in))
+    $w.BeginAnimation([Windows.UIElement]::OpacityProperty, (Anim 1 0 140 0 $in)); return }
   [void]$cards.Remove($w); $w.Close(); Layout-Cards (Read-Conf)
 }
 function Show-Card($e, $c) {
@@ -281,9 +289,10 @@ function Show-Card($e, $c) {
     foreach ($n in 'QAllow', 'QDeny', 'QTerm') { Press $w.FindName($n); $w.FindName($n).Add_MouseLeftButtonUp({ param($s, $ev) $ev.Handled = $true; Send-Reply ([Windows.Window]::GetWindow($s)) $s.Tag }) }
     $w.Add_MouseEnter({ param($s) if (-not $s.Tag.closing) { $s.Tag.until = [DateTime]::MaxValue } })
     $w.Add_MouseLeave({ param($s) if (-not $s.Tag.closing) { $s.Tag.until = [DateTime]::Now.AddSeconds(4) } })
+    $k = [double]$c['card_size'] / 100; $w.Width = 420 * $k; $bd = $w.FindName('Card'); $bd.LayoutTransform = New-Object Windows.Media.ScaleTransform($k, $k); $bd.Opacity = [double]$c['card_alpha'] / 100
     $w.Opacity = 0
     [void]$cards.Insert(0, $w); $w.Show(); $w.UpdateLayout(); Layout-Cards $c
-    Enter-Card $w $e ($c['position'] -eq 'top-center')
+    Enter-Card $w $e $c['position']
   } else { $w.FindName('TitleFx').Visibility = 'Collapsed'; $w.FindName('Title').Visibility = 'Visible'; $w.UpdateLayout(); Layout-Cards $c }
   Blink-Eyes $w $(if ($ask) { 1 } else { 2 })
   if ($ask -and $e.reply) {                                                 # the thin bar runs out when the card stops waiting
@@ -300,7 +309,7 @@ function Send-Reply($w, $answer) {
   $w.Tag.reply = $null; $w.FindName('Quick').Visibility = 'Collapsed'; $w.FindName('Why').Visibility = 'Collapsed'
   $a = $w.FindName('Answered'); $a.Visibility = 'Visible'
   switch ($answer) { 'allow' { $a.Text = 'Allowed'; $a.Foreground = Brush '#4CC38A' } 'deny' { $a.Text = 'Denied'; $a.Foreground = Brush '#FF6B5E' } default { $a.Text = 'Answer it in the terminal'; $a.Foreground = Brush '#85847F' } }
-  foreach ($n in 'EyeL', 'EyeR') { $r = $w.FindName($n); $r.BeginAnimation([Windows.UIElement]::OpacityProperty, $null); $r.Opacity = 1; $r.Fill = Brush $BLUE; $r.Effect.Color = Color $BLUE }
+  foreach ($n in 'EyeL', 'EyeR') { $r = $w.FindName($n); $r.BeginAnimation([Windows.UIElement]::OpacityProperty, $null); $r.Opacity = 1; $r.Fill = Brush $script:EyeWork; $r.Effect.Color = Color $script:EyeWork }
   Blink-Eyes $w 1; Fade-In $a 6 220
   $w.Tag.until = [DateTime]::Now.AddSeconds(1.6)
 }
@@ -340,11 +349,11 @@ function Prune {                         # a session that went quiet without say
 }
 $DOCK_XAML = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" WindowStyle="None" AllowsTransparency="True" Background="Transparent" Topmost="True" ShowInTaskbar="False" ShowActivated="False" ResizeMode="NoResize" Width="460" Height="560" Focusable="False" UseLayoutRounding="True">
-  <Border x:Name="Pill" HorizontalAlignment="Center" VerticalAlignment="Top" Width="110" CornerRadius="0,0,18,18" Background="#F60A0A0C" BorderBrush="#2C2C32" BorderThickness="1,0,1,1" ClipToBounds="True" TextElement.FontFamily="Segoe UI Variable Text, Segoe UI">
+  <Border x:Name="Pill" Width="110" BorderBrush="#2C2C32" ClipToBounds="True" Cursor="Hand" TextElement.FontFamily="Segoe UI Variable Text, Segoe UI">
     <Border.RenderTransform><TranslateTransform x:Name="Drop"/></Border.RenderTransform>
-    <StackPanel>
-      <Grid Height="30">
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="15,0,0,0">
+    <StackPanel x:Name="Stack">
+      <Grid x:Name="BarRow" Height="30" Background="Transparent">
+        <StackPanel x:Name="Eyes" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="15,0,0,0">
           <Rectangle x:Name="EyeL" Width="11" Height="5" RadiusX="2" RadiusY="2" Margin="0,0,5,0"/>
           <Rectangle x:Name="EyeR" Width="11" Height="5" RadiusX="2" RadiusY="2"/>
         </StackPanel>
@@ -355,16 +364,55 @@ $DOCK_XAML = @'
   </Border>
 </Window>
 '@
-$script:DockWin = $null; $script:DockOpen = $false; $script:DockLeave = [DateTime]::MaxValue; $script:DockW = 0
-function Dock-Width($n) { 62 + [math]::Max(1, $n) * 15 + 12 }
-function Dock-Size {                     # the pill grows and shrinks; the open list slides out of it
-  $p = $script:DockWin.FindName('Pill'); $l = $script:DockWin.FindName('List')
+$script:DockWin = $null; $script:DockOpen = $false; $script:DockHide = [DateTime]::MaxValue; $script:DockFresh = $false; $script:DockDown = $null
+function Dock-Width($n, $c) { $(if ($c['dock_eyes'] -ne '0') { 62 } else { 14 }) + [math]::Max(1, $n) * 15 + 12 }
+function Dock-Size {                     # always from where it is now, so a quick in-and-out never jumps
+  $c = $script:DC; $p = $script:DockWin.FindName('Pill'); $l = $script:DockWin.FindName('List')
   $open = $script:DockOpen -and $sessions.Count -gt 0
-  $w = if ($open) { 440 } else { Dock-Width $sessions.Count }
-  if ($w -ne $script:DockW) { $from = if ($script:DockW) { $script:DockW } else { $w }
-    $p.BeginAnimation([Windows.FrameworkElement]::WidthProperty, (Anim $from $w 420 0 (Ease-Out))); $script:DockW = $w }
-  $h = if ($open) { $sessions.Count * 56 + 8 } else { 0 }
-  $l.BeginAnimation([Windows.FrameworkElement]::MaxHeightProperty, (Anim $l.ActualHeight $h 420 0 (Ease-Out)))
+  $p.BeginAnimation([Windows.FrameworkElement]::WidthProperty, (AnimTo $(if ($open) { 440 } else { Dock-Width $sessions.Count $c }) 200))
+  $l.BeginAnimation([Windows.FrameworkElement]::MaxHeightProperty, (AnimTo $(if ($open) { $sessions.Count * 56 + 8 } else { 0 }) 200))
+}
+function Dock-Spots {                    # where the bar's middle and top edge sit in each of the six places
+  $wa = [Windows.SystemParameters]::WorkArea; $k = [double]$script:DC['dock_size'] / 100; $h = 30 * $k; $m = 10
+  $o = [ordered]@{}; foreach ($v in 'top', 'bottom') { foreach ($u in 'left', 'center', 'right') {
+    $edge = if ($u -eq 'center') { 0 } else { $m }
+    $o["$v-$u"] = @{ y = $(if ($v -eq 'top') { $wa.Top + $edge } else { $wa.Bottom - $h - $edge }) ; x = $(switch ($u) { 'left' { $wa.Left + $m } 'center' { $wa.Left + $wa.Width / 2 } default { $wa.Right - $m } }) } } }
+  $o
+}
+function Dock-Place($c) {                # applies every look-and-place setting without rebuilding anything
+  $w = $script:DockWin; if (-not $w) { return }
+  $k = [double]$c['dock_size'] / 100; $w.Width = 460 * $k; $w.Height = 560 * $k
+  $p = $w.FindName('Pill'); $p.LayoutTransform = New-Object Windows.Media.ScaleTransform($k, $k); $p.Opacity = [double]$c['dock_alpha'] / 100
+  $p.Background = Brush $(switch ($c['dock_bg']) { 'graphite' { '#F61E1E22' } 'glass' { '#A8141418' } default { '#F60A0A0C' } })
+  $w.FindName('Eyes').Visibility = $(if ($c['dock_eyes'] -ne '0') { 'Visible' } else { 'Collapsed' })
+  $r = [double]$c['dock_round']; $pos = $c['dock_pos']; $wa = [Windows.SystemParameters]::WorkArea
+  if ($pos -eq 'free') {
+    $x = [double]$c['dock_x']; $y = [double]$c['dock_y']; $down = $y -lt $wa.Top + $wa.Height / 2
+    $p.HorizontalAlignment = 'Center'; $p.VerticalAlignment = $(if ($down) { 'Top' } else { 'Bottom' })
+    $w.Left = $x - $w.Width / 2; $w.Top = $(if ($down) { $y } else { $y + 30 * $k - $w.Height })
+    $p.CornerRadius = New-Object Windows.CornerRadius $r; $p.BorderThickness = 1
+  } else {
+    $sp = (Dock-Spots)[$pos]; $down = $pos -like 'top-*'; $hor = $pos.Split('-')[1]
+    $p.HorizontalAlignment = @{ left = 'Left'; center = 'Center'; right = 'Right' }[$hor]; $p.VerticalAlignment = $(if ($down) { 'Top' } else { 'Bottom' })
+    $w.Left = switch ($hor) { 'left' { $sp.x } 'center' { $sp.x - $w.Width / 2 } default { $sp.x - $w.Width } }
+    $w.Top = $(if ($down) { $sp.y } else { $sp.y + 30 * $k - $w.Height })
+    if ($hor -eq 'center') {             # in the middle it hangs off the screen edge, like a notch
+      $p.CornerRadius = $(if ($down) { New-Object Windows.CornerRadius 0, 0, $r, $r } else { New-Object Windows.CornerRadius $r, $r, 0, 0 })
+      $p.BorderThickness = $(if ($down) { New-Object Windows.Thickness 1, 0, 1, 1 } else { New-Object Windows.Thickness 1, 1, 1, 0 })
+    } else { $p.CornerRadius = New-Object Windows.CornerRadius $r; $p.BorderThickness = 1 }
+  }
+  $st = $w.FindName('Stack'); $bar = $w.FindName('BarRow'); $first = $st.Children[0] -eq $bar   # opening upwards: the list goes above the bar
+  if ($first -ne $down) { $st.Children.Remove($bar); if ($down) { [void]$st.Children.Insert(0, $bar) } else { [void]$st.Children.Add($bar) } }
+}
+function Dock-Drop {                     # after a drag: snap to a spot when close to one, else stay exactly there
+  $w = $script:DockWin; $p = $w.FindName('Pill'); $c = Read-Conf; $script:DC = $c; $k = [double]$c['dock_size'] / 100
+  $pt = $p.TranslatePoint((New-Object Windows.Point(0, 0)), $w); $bar = $w.FindName('BarRow').TranslatePoint((New-Object Windows.Point(0, 0)), $w)
+  $cx = $w.Left + $pt.X + $p.ActualWidth * $k / 2; $y = $w.Top + $bar.Y; $spots = Dock-Spots; $hit = $null
+  foreach ($n in $spots.Keys) { $ax = $spots[$n].x; if ($n -like '*-left') { $ax += $p.ActualWidth * $k / 2 } elseif ($n -like '*-right') { $ax -= $p.ActualWidth * $k / 2 }
+    if ([math]::Abs($cx - $ax) -lt 110 -and [math]::Abs($y - $spots[$n].y) -lt 60) { $hit = $n } }
+  if ($hit) { $c['dock_pos'] = $hit } else { $c['dock_pos'] = 'free'; $c['dock_x'] = [string][int]$cx; $c['dock_y'] = [string][int]$y }
+  Save-Conf $c; $script:DC = $c; $script:ConfAt = [IO.File]::GetLastWriteTimeUtc($conf); Dock-Place $c; Layout-Cards $c
+  if ($script:C) { $script:C = $c; if ($script:Tab -eq 'agents') { Render-Page } }
 }
 function Ago($t) { $m = [int]([DateTime]::Now - $t).TotalMinutes; if ($m -lt 1) { 'now' } elseif ($m -lt 60) { "$m min" } else { '{0} h' -f [math]::Floor($m / 60) } }
 function Dock-Rows {
@@ -395,10 +443,8 @@ function Dock-Rows {
       [void]$g.Children.Add($btns)
     }
     $b.Child = $g; [void]$list.Children.Add($b)
-    if ($script:DockFresh) { Rise $b 12 420 ($i * 45) }
     $i++
   }
-  $script:DockFresh = $false
 }
 function Next-Color($key) {
   $s = $sessions[$key]; if (-not $s) { return }
@@ -418,29 +464,50 @@ function Dock-Dots {
       foreach ($p in [Windows.Media.ScaleTransform]::ScaleXProperty, [Windows.Media.ScaleTransform]::ScaleYProperty) { $st.BeginAnimation($p, (Anim 0 1 380 120 $bk)) } }
     [void]$d.Children.Add($e)
   }
-  $col = if ($ask) { $OR } else { $BLUE }
+  $col = if ($ask) { $script:DC['eye_ask'] } else { $script:DC['eye_work'] }
   foreach ($n in 'EyeL', 'EyeR') { $r = $script:DockWin.FindName($n); $r.Fill = Brush $col
     $fx = New-Object Windows.Media.Effects.DropShadowEffect; $fx.Color = Color $col; $fx.BlurRadius = 9; $fx.ShadowDepth = 0; $fx.Opacity = .9; $r.Effect = $fx }
 }
+function Dock-Open($on) {
+  if ($script:DockOpen -eq $on -or -not $script:DockWin) { return }
+  $script:DockOpen = $on; Dock-Size
+  if ($on) { $i = 0; foreach ($b in $script:DockWin.FindName('List').Children) { Rise $b 8 200 ($i * 18); $i++ } }
+}
 function Update-Dock($c) {
-  if ($c['dock'] -eq '0' -or $c['popup'] -eq '0') { if ($script:DockWin) { $script:DockWin.Close(); $script:DockWin = $null; $script:DockW = 0 }; return }
+  $script:DC = $c
+  $show = $sessions.Count -gt 0 -and ($c['dock_when'] -ne 'ask' -or @($sessions.Values | Where-Object { $_.state -eq 'ask' }).Count -gt 0)
+  if ($c['dock'] -eq '0' -or $c['popup'] -eq '0') { if ($script:DockWin) { $script:DockWin.Close(); $script:DockWin = $null }; return }
   if (-not $script:DockWin) {
-    if ($sessions.Count -eq 0) { return }
-    $w = [Windows.Markup.XamlReader]::Parse($DOCK_XAML); $script:DockWin = $w
-    $wa = [Windows.SystemParameters]::WorkArea; $w.Left = $wa.Left + ($wa.Width - $w.Width) / 2; $w.Top = $wa.Top
-    $p = $w.FindName('Pill')
-    $p.Add_MouseEnter({ $script:DockLeave = [DateTime]::MaxValue; if (-not $script:DockOpen) { $script:DockOpen = $true; $script:DockFresh = $true; Dock-Rows; Dock-Size } })
-    $p.Add_MouseLeave({ $script:DockLeave = [DateTime]::Now.AddMilliseconds(350) })
+    if (-not $show) { return }
+    $w = [Windows.Markup.XamlReader]::Parse($DOCK_XAML); $script:DockWin = $w; $script:DockOpen = $false
+    Dock-Place $c
+    $p = $w.FindName('Pill'); $p.Width = Dock-Width $sessions.Count $c
+    $p.Add_MouseEnter({ if ($script:DC['dock_open'] -eq 'hover') { Dock-Open $true } })
+    $p.Add_MouseLeave({ if ($script:DC['dock_open'] -eq 'hover') { Dock-Open $false } })
+    $bar = $w.FindName('BarRow')
+    $bar.Add_MouseLeftButtonDown({ param($s, $ev) $script:DockDown = $ev.GetPosition($script:DockWin) })
+    $bar.Add_MouseMove({ param($s, $ev)      # hold the bar and drag it anywhere
+      if ($script:DockDown -and $ev.LeftButton -eq 'Pressed' -and $script:DC['dock_lock'] -ne '1') {
+        $q = $ev.GetPosition($script:DockWin); if ([math]::Abs($q.X - $script:DockDown.X) + [math]::Abs($q.Y - $script:DockDown.Y) -gt 5) {
+          $script:DockDown = $null; Dock-Open $false; try { $script:DockWin.DragMove() } catch {}; Dock-Drop } } })
+    $bar.Add_MouseLeftButtonUp({ if ($script:DockDown) { $script:DockDown = $null; if ($script:DC['dock_open'] -eq 'click') { Dock-Open (-not $script:DockOpen) } } })
     $w.Show()
-    $w.FindName('Drop').BeginAnimation([Windows.Media.TranslateTransform]::YProperty, (Anim -34 0 520 0 (Ease-Out)))
+    $from = $(if ($p.VerticalAlignment -eq 'Top') { -34 } else { 34 })
+    $w.FindName('Drop').BeginAnimation([Windows.Media.TranslateTransform]::YProperty, (Anim $from 0 260 0 (Ease-Out)))
     Layout-Cards $c
   }
-  Dock-Dots; if ($script:DockOpen) { Dock-Rows }; Dock-Size
-  if ($sessions.Count -eq 0 -and $script:DockWin) { $script:DockOpen = $false
-    $script:DockWin.FindName('Drop').BeginAnimation([Windows.Media.TranslateTransform]::YProperty, (Anim 0 -34 260)); $script:DockHide = [DateTime]::Now.AddMilliseconds(280) }
+  Dock-Dots; Dock-Rows; Dock-Size
+  if (-not $show) { Dock-Open $false; $dir = $(if ($script:DockWin.FindName('Pill').VerticalAlignment -eq 'Top') { -34 } else { 34 })
+    $script:DockWin.FindName('Drop').BeginAnimation([Windows.Media.TranslateTransform]::YProperty, (Anim 0 $dir 160)); $script:DockHide = [DateTime]::Now.AddMilliseconds(180 * $script:AnimK) }
   else { $script:DockHide = [DateTime]::MaxValue }
 }
-$script:DockHide = [DateTime]::MaxValue; $script:DockFresh = $false
+function Conf-Changed($c) {              # every setting takes effect at once, also in the running helper
+  $script:AnimK = if ($c['anim'] -eq '0') { 0.01 } else { 100 / [double]$c['anim_speed'] }
+  $script:EyeWork = $c['eye_work']; $script:DC = $c
+  if ($script:DockWin) { Dock-Place $c; Update-Dock $c } elseif ($sessions.Count) { Update-Dock $c }
+  if ($cards.Count) { Layout-Cards $c }
+}
+$script:DC = Read-Conf; $script:EyeWork = $script:DC['eye_work']; $script:ConfAt = [DateTime]::MinValue
 function Handle($e) {
   $c = Read-Conf
   $s = Track $e $c; if ($s) { $e.color = $s.color }
@@ -565,7 +632,7 @@ $SET_XAML = @'
 '@
 $SITE = 'https://getncloud.com/?utm_source=blink&utm_medium=settings'
 function Open-Url($u) { Start-Process $u }
-function Save-Now { Save-Conf $script:C; $script:Win.FindName('Saved').Text = 'Saved.'; Update-Preview }
+function Save-Now { Save-Conf $script:C; $script:Win.FindName('Saved').Text = 'Saved.'; Conf-Changed $script:C; Update-Preview }
 
 # Small builders. No closures: every handler reads what it needs from the control's Tag and from $script: state.
 function T($text, $size, $hex, $weight) { $t = New-Object Windows.Controls.TextBlock; $t.Text = $text; $t.FontSize = $size; $t.Foreground = Brush $hex; if ($weight) { $t.FontWeight = $weight }; $t.TextWrapping = 'Wrap'; $t }
@@ -648,22 +715,44 @@ function Sound-Picker($agent) {
     Add $b
   }
 }
-function Position-Picker {
-  # A small screen: click where the card should appear.
+function Pos-Name($p) { if ($p -eq 'free') { 'where you dragged it' } else { $p -replace '-', ' ' } }
+function Position-Picker($key) {
+  # A small screen: click where it should appear.
   $cv = New-Object Windows.Controls.Canvas; $cv.Width = 180; $cv.Height = 108
   $scr = New-Object Windows.Shapes.Rectangle; $scr.Width = 180; $scr.Height = 108; $scr.RadiusX = 8; $scr.RadiusY = 8; $scr.Fill = Brush '#0E0E10'; $scr.Stroke = Brush '#34343A'; [void]$cv.Children.Add($scr)
   $bar = New-Object Windows.Shapes.Rectangle; $bar.Width = 180; $bar.Height = 10; $bar.Fill = Brush '#1E1E22'; [Windows.Controls.Canvas]::SetTop($bar, 98); [void]$cv.Children.Add($bar)
-  foreach ($p in @(@('top-right', 126, 14), @('top-center', 67, 4), @('bottom-right', 126, 74))) {   # 46 px spots, never touching
-    $r = New-Object Windows.Controls.Border; $r.Width = 46; $r.Height = 16; $r.CornerRadius = 5; $r.Cursor = 'Hand'; $r.Tag = $p[0]
-    $sel = $script:C['position'] -eq $p[0]; $r.Background = Brush $(if ($sel) { '#FF7A12' } else { '#2C2C32' })
+  foreach ($p in @(@('top-left', 8, 8), @('top-center', 67, 4), @('top-right', 126, 8), @('bottom-left', 8, 76), @('bottom-center', 67, 76), @('bottom-right', 126, 76))) {
+    $r = New-Object Windows.Controls.Border; $r.Width = 46; $r.Height = 16; $r.CornerRadius = 5; $r.Cursor = 'Hand'; $r.Tag = @{ key = $key; value = $p[0] }
+    $sel = $script:C[$key] -eq $p[0]; $r.Background = Brush $(if ($sel) { '#FF7A12' } else { '#2C2C32' })
     [Windows.Controls.Canvas]::SetLeft($r, $p[1]); [Windows.Controls.Canvas]::SetTop($r, $p[2])
-    $r.Add_MouseLeftButtonUp({ param($x) $script:C['position'] = $x.Tag; Save-Now; Render-Page }); [void]$cv.Children.Add($r)
+    $r.Add_MouseLeftButtonUp({ param($x) $script:C[$x.Tag.key] = $x.Tag.value; Save-Now; Render-Page }); [void]$cv.Children.Add($r)
   }
   $cv
 }
+function Seg($key, $options) {           # a few plain choices side by side
+  $sp = New-Object Windows.Controls.StackPanel; $sp.Orientation = 'Horizontal'
+  foreach ($o in $options) { $on = $script:C[$key] -eq $o[0]
+    $b = New-Object Windows.Controls.Border; $b.CornerRadius = 8; $b.Padding = '11,6'; $b.Margin = '4,0,0,0'; $b.Cursor = 'Hand'; $b.Tag = @{ key = $key; value = $o[0] }
+    $b.Background = Brush $(if ($on) { '#FF7A12' } else { '#26262B' }); $b.Child = (T $o[1] 12.5 $(if ($on) { '#111113' } else { '#C9C7C1' }) $(if ($on) { 'SemiBold' } else { $null }))
+    $b.Add_MouseLeftButtonUp({ param($x) $script:C[$x.Tag.key] = $x.Tag.value; Save-Now; Render-Page }); [void]$sp.Children.Add($b) }
+  $sp
+}
+function Swatches($key, $colors) {
+  $sw = New-Object Windows.Controls.StackPanel; $sw.Orientation = 'Horizontal'
+  foreach ($p in $colors) { $d = New-Object Windows.Shapes.Ellipse; $d.Width = 18; $d.Height = 18; $d.Margin = '3,0,3,0'; $d.Fill = Brush $p; $d.Cursor = 'Hand'; $d.Tag = @{ key = $key; value = $p }
+    if ($script:C[$key] -eq $p) { $d.Stroke = Brush '#F2F1EE'; $d.StrokeThickness = 2 }
+    $d.Add_MouseLeftButtonUp({ param($x) $script:C[$x.Tag.key] = $x.Tag.value; Save-Now; Render-Page }); [void]$sw.Children.Add($d) }
+  $sw
+}
+function Preview-Bar {                   # four sample agents on the real bar, so you see every change as you make it
+  $n = 0; foreach ($a in @(@('Fix the checkout page', 'getncloud', 'work'), @('Migrate the users table', 'api', 'ask'), @('Speed up the hero', 'landing', 'done'), @('Debounce the keys', 'firmware', 'work'))) { $n++
+    [void](Track @{ key = "preview-$n"; agent = 'claude'; project = $a[1]; session = $a[0]; kind = $a[2] } $script:C) }
+  Update-Dock $script:C
+  $script:PreviewEnd = [DateTime]::Now.AddSeconds(30)
+}
 
 $script:Tab = 'claude'; $script:PrevKind = 'ask'
-$PAGES = [ordered]@{ claude = 'Claude Code'; codex = 'Codex'; agents = 'Agents'; card = 'Card'; sound = 'Sound'; pad = 'n.cloud pad' }
+$PAGES = [ordered]@{ claude = 'Claude Code'; codex = 'Codex'; agents = 'Agent bar'; card = 'Card'; look = 'Look and motion'; sound = 'Sound'; pad = 'n.cloud pad' }
 function Render-Nav {
   $nav = $script:Win.FindName('Nav'); $nav.Children.Clear()
   foreach ($k in $PAGES.Keys) {
@@ -713,25 +802,48 @@ function Render-Page {
       }
     }
     'agents' {
-      H1 'Agents' 'Run as many agents as you like. Each one gets its own colour, so you can tell who is calling at a glance.'
-      [void](Row 'Agent bar at the top of the screen' 'One dot per running agent. Hover to see them all and answer from the list. On a Mac it lives in the notch.' (Switch 'dock' '1' '0'))
+      H1 'Agent bar' 'One dot per running agent. Put it where you like and make it yours.'
+      [void](Row 'Show the agent bar' 'Hover it to see every agent and answer from the list. On a Mac it lives in the notch unless you move it.' (Switch 'dock' '1' '0'))
+      if ($c['dock'] -ne '0') {
+        $pv = New-Object Windows.Controls.Button; $pv.Style = $script:Win.Resources['Btn']; $pv.Content = 'Show sample agents for 30 s'; $pv.Add_Click({ Preview-Bar })
+        [void](Row 'See it while you change it' 'Sample agents appear on the real bar.' $pv)
+        Group 'Where'
+        [void](Row "Now: $(Pos-Name $c['dock_pos'])" 'Click a spot, or hold the bar and drag it anywhere on the screen. Near a corner it snaps in.' (Position-Picker 'dock_pos'))
+        [void](Row 'Lock it in place' 'Dragging the bar does nothing.' (Switch 'dock_lock' '1' '0'))
+        Group 'Look'
+        $r = Range 'dock_size' 70 180 5 { param($v) "$([int]$v) %" }; [void](Row 'Size' $null $r.panel)
+        $r = Range 'dock_alpha' 40 100 5 { param($v) "$([int]$v) %" }; [void](Row 'Opacity' $null $r.panel)
+        $r = Range 'dock_round' 0 24 2 { param($v) "$([int]$v) px" }; [void](Row 'Rounded corners' $null $r.panel)
+        [void](Row 'Background' $null (Seg 'dock_bg' @(@('black', 'Black'), @('graphite', 'Graphite'), @('glass', 'Glass'))))
+        [void](Row 'Show the eyes' 'Off leaves only the dots.' (Switch 'dock_eyes' '1' '0'))
+        Group 'Behaviour'
+        [void](Row 'Open the list' $null (Seg 'dock_open' @(@('hover', 'On hover'), @('click', 'On click'), @('never', 'Never'))))
+        [void](Row 'Show the bar' 'Only when needed keeps the screen clean until an agent asks for you.' (Seg 'dock_when' @(@('always', 'Always'), @('ask', 'Only when needed'))))
+      }
       Group 'Colours'
       $s = T 'New agents take the next free colour. Pin one to a project and it keeps it every time.' 12 '#85847F'; $s.Margin = '0,0,0,8'; Add $s
       $names = @($c.Keys | Where-Object { $_ -like 'color.*' } | ForEach-Object { $_.Substring(6) })
       if (-not $names) { $s = T 'Nothing pinned yet. Click a dot in the agent bar, or add a project below.' 12.5 '#B4B2AC'; Add $s }
-      foreach ($n in $names) { $sw = New-Object Windows.Controls.StackPanel; $sw.Orientation = 'Horizontal'
-        foreach ($p in $PALETTE) { $d = New-Object Windows.Shapes.Ellipse; $d.Width = 18; $d.Height = 18; $d.Margin = '3,0,3,0'; $d.Fill = Brush $p; $d.Cursor = 'Hand'; $d.Tag = @{ key = "color.$n"; value = $p }
-          if ($c["color.$n"] -eq $p) { $d.Stroke = Brush '#F2F1EE'; $d.StrokeThickness = 2 }
-          $d.Add_MouseLeftButtonUp({ param($x) $script:C[$x.Tag.key] = $x.Tag.value; Save-Now; Render-Page }); [void]$sw.Children.Add($d) }
-        [void](Row $n $null $sw) }
+      foreach ($n in $names) { [void](Row $n $null (Swatches "color.$n" $PALETTE)) }
+    }
+    'look' {
+      H1 'Look and motion' 'How everything moves, and what the eyes look like.'
+      Group 'Animation'
+      [void](Row 'Animate' 'Off makes every change instant.' (Switch 'anim' '1' '0'))
+      if ($c['anim'] -ne '0') { $r = Range 'anim_speed' 50 250 10 { param($v) "$([int]$v) %" }; [void](Row 'Speed' 'Higher is quicker.' $r.panel) }
+      Group 'Eyes'
+      [void](Row 'When an agent needs you' $null (Swatches 'eye_ask' @('#FF7A12', '#FF4D4D', '#F5D04E', '#FF6FAE', '#B18CFF')))
+      [void](Row 'While it works and when it is done' $null (Swatches 'eye_work' @('#4DA3FF', '#4CC38A', '#3FD0D4', '#B18CFF', '#F2F1EE')))
     }
     'card' {
       H1 'Card' 'The small window that shows who needs you and what for. It never takes the keyboard away from what you are doing.'
       [void](Row 'Show a card' 'Turn off to get only the sound.' (Switch 'popup' '1' '0'))
       if ($c['popup'] -ne '0') {
         Group 'Where on the screen'
-        $now = @{ 'top-right' = 'top right'; 'top-center' = 'top center'; 'bottom-right' = 'bottom right' }[$c['position']]
-        [void](Row "Now: $now" 'Click a spot on the little screen. Top right stays out of the way of Windows notifications, top center looks like an island.' (Position-Picker))
+        [void](Row "Now: $(Pos-Name $c['position'])" 'Click a spot on the little screen. Top right stays out of the way of Windows notifications, top center looks like an island.' (Position-Picker 'position'))
+        Group 'Look'
+        $r = Range 'card_size' 70 160 5 { param($v) "$([int]$v) %" }; [void](Row 'Size' $null $r.panel)
+        $r = Range 'card_alpha' 50 100 5 { param($v) "$([int]$v) %" }; [void](Row 'Opacity' $null $r.panel)
         Group 'How long it stays'
         $stay = $c['card_ask'] -eq 'stay'
         [void](Row 'Keep "needs you" cards until I close them' 'Good if you often step away.' (Switch 'card_ask' 'stay' '25'))
@@ -788,7 +900,7 @@ function Update-Preview {
     $b.Child = (T $k[1] 12 $(if ($on) { '#F2F1EE' } else { '#85847F' }))
     $b.Add_MouseLeftButtonUp({ param($x) $script:PrevKind = $x.Tag; Update-Preview }); [void]$kinds.Children.Add($b)
   }
-  $pos = @{ 'top-right' = 'top right'; 'top-center' = 'top center'; 'bottom-right' = 'bottom right' }[$c['position']]
+  $pos = Pos-Name $c['position']
   $NAMES = @{ eyes = 'Marimba'; glass = 'Soft tones'; bell = 'Desk bell'; system = 'Windows'; custom = 'your own' }
   $snd = if ($c["$agent.theme"] -eq 'off') { 'no sound' } else { "the $($NAMES[$c["$agent.theme"]]) sound" }
   $script:Win.FindName('PrevNote').Text = if ($c['popup'] -eq '0') { "Card is off: you will only hear $snd." } else { "Shows $pos of your screen with $snd." }
@@ -851,7 +963,7 @@ function Open-Settings {
   $script:Win.FindName('TryDone').Add_Click({ $a = if ($script:Tab -eq 'codex') { 'codex' } else { 'claude' }
     Handle @{ agent = $a; kind = 'done'; key = "test-$a-done"; project = 'getncloud'; theme = $script:C["$a.theme"]; popup = '1'; title = 'Finished'; msg = 'Your turn.' } })
   Render-Nav; Render-Page; Update-Preview
-  $script:Win.Add_Closed({ foreach ($x in @($cards)) { $x.Close() }; [Windows.Threading.Dispatcher]::CurrentDispatcher.InvokeShutdown() })
+  $script:Win.Add_Closed({ foreach ($x in @($cards)) { $x.Close() }; if ($script:DockWin) { $script:DockWin.Close() }; [Windows.Threading.Dispatcher]::CurrentDispatcher.InvokeShutdown() })
   $script:Win.Opacity = 0; $script:Win.Show()
   $script:Win.BeginAnimation([Windows.UIElement]::OpacityProperty, (New-Object Windows.Media.Animation.DoubleAnimation(0, 1, [TimeSpan]::FromMilliseconds(220))))
   Fade-In $script:Page 14 320
@@ -860,7 +972,7 @@ function Open-Settings {
 # ---- main loop -----------------------------------------------------------------------------------------------
 $last = [DateTime]::Now
 $timer = New-Object Windows.Threading.DispatcherTimer; $timer.Interval = [TimeSpan]::FromMilliseconds(40)
-$hbAt = [DateTime]::MinValue
+$hbAt = [DateTime]::MinValue; $script:ConfSeen = [DateTime]::MinValue; $script:PreviewEnd = [DateTime]::MaxValue
 $timer.Add_Tick({
   $now = [DateTime]::Now
   if ($Mode -ne 'settings') {
@@ -868,12 +980,14 @@ $timer.Add_Tick({
       try { $e = Read-Event $f; Remove-Item $f -Force; if ($e.kind) { Handle $e; $script:last = $now } } catch { Remove-Item $f -Force -ErrorAction SilentlyContinue }
     } }
     if (($now - $script:hbAt).TotalSeconds -ge 5) { [IO.File]::WriteAllText((Join-Path $state 'heartbeat'), ''); $script:hbAt = $now; Prune; if ($script:DockOpen) { Dock-Rows } }
-    if ($now -gt $script:DockLeave) { $script:DockLeave = [DateTime]::MaxValue; $script:DockOpen = $false; if ($script:DockWin) { Dock-Size } }
-    if ($now -gt $script:DockHide) { $script:DockHide = [DateTime]::MaxValue; if ($script:DockWin -and $sessions.Count -eq 0) { $script:DockWin.Close(); $script:DockWin = $null; $script:DockW = 0; Layout-Cards (Read-Conf) } }
     if ($script:Demo.Count -and $now -ge $script:Demo[0].at) { $x = $script:Demo[0]; $script:Demo.RemoveAt(0); try { & $x.do } catch { Add-Content (Join-Path $state "demo.log") ("$_ @ " + $_.InvocationInfo.PositionMessage) } }
     if (($now - $script:last).TotalHours -ge 4 -and $cards.Count -eq 0 -and $sessions.Count -eq 0) { [Windows.Threading.Dispatcher]::CurrentDispatcher.InvokeShutdown() }
   }
   foreach ($w in @($cards)) { if ($now -gt $w.Tag.until) { Close-Card $w } }
+  if ($now -gt $script:DockHide) { $script:DockHide = [DateTime]::MaxValue; if ($script:DockWin) { $script:DockWin.Close(); $script:DockWin = $null; Layout-Cards $script:DC } }
+  if ($now -gt $script:PreviewEnd) { $script:PreviewEnd = [DateTime]::MaxValue; foreach ($k in 1..4) { $sessions.Remove("preview-$k") }; Update-Dock $script:DC }
+  if ($Mode -ne 'settings' -and ($now - $script:ConfSeen).TotalMilliseconds -ge 300) { $script:ConfSeen = $now
+    try { $t = [IO.File]::GetLastWriteTimeUtc($conf); if ($t -ne $script:ConfAt) { $script:ConfAt = $t; Conf-Changed (Read-Conf) } } catch {} }
 })
 $timer.Start()
 function Save-Png($el, $path, $w, $h) {
@@ -888,7 +1002,7 @@ function Snapshot($dir) {
   New-Item -ItemType Directory -Force $dir | Out-Null
   Open-Settings; $script:Win.Left = -5000; $script:Win.BeginAnimation([Windows.UIElement]::OpacityProperty, $null); $script:Win.Opacity = 1
   $rootEl = $script:Win.Content
-  foreach ($tab in 'claude', 'codex', 'agents', 'card', 'sound', 'pad') {
+  foreach ($tab in 'claude', 'codex', 'agents', 'card', 'look', 'sound', 'pad') {
     $script:Tab = $tab; $script:PrevKind = 'ask'; Render-Nav; Render-Page; Update-Preview
     $script:Page.BeginAnimation([Windows.UIElement]::OpacityProperty, $null); $script:Page.Opacity = 1; $script:Page.RenderTransform = $null; Still $script:PrevCard
     Pump; $script:Win.UpdateLayout(); Pump
@@ -917,6 +1031,8 @@ function Demo {                          # four agents at work: for screen recor
   Demo-Step 2.1 { Ev 'demo-3' 'codex' 'landing' 'Speed up the hero section' 'work' }
   Demo-Step 2.9 { Ev 'demo-4' 'claude' 'firmware' 'Debounce the keys' 'work' }
   Demo-Step 5 { Ev 'demo-2' 'claude' 'api' 'Migrate the users table' 'ask' @{ title = 'Needs you'; msg = 'Allow this command?'; cmd = 'npm run migrate'; reply = 'test-demo'; wait = '12'; demo = '1' } }
+  Demo-Step 7.5 { Dock-Open $true }
+  Demo-Step 10 { Dock-Open $false }
   Demo-Step 11 { foreach ($w in @($cards)) { if ($w.Tag.key -eq 'demo-2') { Send-Reply $w 'allow' } } }
   Demo-Step 14 { Ev 'demo-3' 'codex' 'landing' 'Speed up the hero section' 'done' @{ title = 'Finished'; msg = 'The hero section now loads in 0.8 s.' } }
   Demo-Step 21 { foreach ($k in 'demo-1', 'demo-2', 'demo-3', 'demo-4') { Ev $k 'claude' '' '' 'end' } }
@@ -924,5 +1040,6 @@ function Demo {                          # four agents at work: for screen recor
 }
 if ($Mode -eq 'snapshot') { Snapshot $Out; exit }
 if ($Mode -eq 'demo') { Preload (Read-Conf); Demo }
+Conf-Changed (Read-Conf)
 if ($Mode -eq 'settings') { Open-Settings } elseif ($Mode -ne 'demo') { Preload (Read-Conf) }
 [Windows.Threading.Dispatcher]::Run()

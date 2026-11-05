@@ -19,6 +19,8 @@ On a Mac the bar lives in the notch: eyes on the left, agents on the right. A re
 
 The eyes keep their meaning everywhere: blue works, orange needs you. The colour tells you who.
 
+Make it yours in the settings: put the bar in any corner or drag it anywhere (Windows), change its size, opacity, corners and background, open the list on hover or on click, show it only when an agent needs you, pick the eye colours, where the card appears and how big it is, and how fast everything moves, or turn animation off.
+
 ## Install
 
 ```

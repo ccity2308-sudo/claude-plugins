@@ -21,9 +21,10 @@ func rgb(_ hex: String) -> NSColor {
     let v = UInt32(hex.dropFirst(), radix: 16) ?? 0xFFFFFF
     return NSColor(red: CGFloat(v >> 16 & 255) / 255, green: CGFloat(v >> 8 & 255) / 255, blue: CGFloat(v & 255) / 255, alpha: 1)
 }
-let orange = rgb("#FF7A12"), blue = rgb("#4DA3FF")
+let orange = rgb("#FF7A12")
 let palette = ["#B18CFF", "#4CC38A", "#FF6FAE", "#F5D04E", "#3FD0D4", "#FF8A70", "#9FB4C7", "#C8A27A"]
 let expoOut = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)                  // the site's easing
+var speed = 1.0, position = "top-center", attached = true                            // from the settings file, read on every render
 
 func readConf() -> [String: String] {
     var c: [String: String] = [:]
@@ -105,10 +106,11 @@ final class Dot: NSView {
     required init?(coder: NSCoder) { fatalError() }
 }
 func rise(_ v: NSView, delay: Double) {                                               // fades in while rising into place
+    if speed == 0 { return }
     v.wantsLayer = true; guard let l = v.layer else { return }
-    let t = CACurrentMediaTime() + delay
-    let o = CABasicAnimation(keyPath: "opacity"); o.fromValue = 0; o.toValue = 1; o.duration = 0.3; o.beginTime = t; o.fillMode = .backwards
-    let y = CABasicAnimation(keyPath: "transform.translation.y"); y.fromValue = -12; y.toValue = 0; y.duration = 0.46; y.beginTime = t; y.timingFunction = expoOut; y.fillMode = .backwards
+    let t = CACurrentMediaTime() + delay / speed
+    let o = CABasicAnimation(keyPath: "opacity"); o.fromValue = 0; o.toValue = 1; o.duration = 0.14 / speed; o.beginTime = t; o.fillMode = .backwards
+    let y = CABasicAnimation(keyPath: "transform.translation.y"); y.fromValue = -8; y.toValue = 0; y.duration = 0.24 / speed; y.beginTime = t; y.timingFunction = expoOut; y.fillMode = .backwards
     l.add(o, forKey: "fade"); l.add(y, forKey: "rise")
 }
 
@@ -118,7 +120,7 @@ final class Island: NSView {
         NSColor.black.setFill()
         let r = min(20, bounds.height * 0.4)
         NSBezierPath(roundedRect: bounds, xRadius: r, yRadius: r).fill()
-        NSRect(x: 0, y: r, width: bounds.width, height: bounds.height - r).fill()     // square top: it merges into the notch
+        if attached { NSRect(x: 0, y: r, width: bounds.width, height: bounds.height - r).fill() }   // square top: it merges into the notch
     }
     override func acceptsFirstMouse(for e: NSEvent?) -> Bool { true }
     override func updateTrackingAreas() {
@@ -140,7 +142,7 @@ panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary
 let island = Island(frame: panel.contentLayoutRect); island.wantsLayer = true; island.autoresizingMask = [.width, .height]
 panel.contentView = island
 
-var hovering = false, isOpen = false, leaveAt = Date.distantFuture, lastActivity = Date(), popKeys = Set<String>()
+var hovering = false, isOpen = false, lastActivity = Date(), popKeys = Set<String>()
 
 func barHeight(_ s: NSScreen) -> CGFloat { max(s.safeAreaInsets.top, 28) }
 func notchWidth(_ s: NSScreen) -> CGFloat {
@@ -148,9 +150,12 @@ func notchWidth(_ s: NSScreen) -> CGFloat {
     return s.frame.width - l.width - r.width
 }
 func place(_ w: CGFloat, _ h: CGFloat, animated: Bool) {
-    let s = notchScreen(), f = NSRect(x: s.frame.midX - w / 2, y: s.frame.maxY - h, width: w, height: h)
-    if !animated { panel.setFrame(f, display: true); return }
-    NSAnimationContext.runAnimationGroup { c in c.duration = 0.42; c.timingFunction = expoOut; panel.animator().setFrame(f, display: true) }
+    let s = notchScreen(), v = s.visibleFrame, m: CGFloat = 10
+    let x = position.hasSuffix("left") ? v.minX + m : position.hasSuffix("right") ? v.maxX - m - w : s.frame.midX - w / 2
+    let y = position == "top-center" ? s.frame.maxY - h : position.hasPrefix("top") ? v.maxY - m - h : v.minY + m
+    let f = NSRect(x: x, y: y, width: w, height: h)
+    if !animated || speed == 0 { panel.setFrame(f, display: true); return }
+    NSAnimationContext.runAnimationGroup { c in c.duration = 0.2 / speed; c.timingFunction = expoOut; panel.animator().setFrame(f, display: true) }
 }
 func answer(_ a: Agent, _ value: String) {
     guard !a.reply.isEmpty else { return }
@@ -161,9 +166,17 @@ func ago(_ d: Date) -> String { let m = Int(Date().timeIntervalSince(d) / 60); r
 
 func render() {
     island.subviews.forEach { $0.removeFromSuperview() }
-    if agents.isEmpty { panel.orderOut(nil); isOpen = false; return }
-    let s = notchScreen(), bar = barHeight(s), notch = notchWidth(s)
+    let conf = readConf()
+    speed = conf["anim"] == "0" ? 0 : (Double(conf["anim_speed"] ?? "") ?? 100) / 100
+    position = conf["dock_pos"] ?? "top-center"; if position == "free" { position = "top-center" }   // dragging is Windows only for now
+    attached = position == "top-center"
+    panel.alphaValue = CGFloat(Double(conf["dock_alpha"] ?? "") ?? 100) / 100
+    let askColor = rgb(conf["eye_ask"] ?? "#FF7A12"), workColor = rgb(conf["eye_work"] ?? "#4DA3FF")
+    let visible = conf["dock"] != "0" && (conf["dock_when"] != "ask" || agents.contains { $0.state == "ask" })
+    if agents.isEmpty || !visible { panel.orderOut(nil); isOpen = false; return }
+    let s = notchScreen(), bar = barHeight(s), notch = attached ? notchWidth(s) : 0
     let asking = agents.first { $0.waiting }
+    if conf["dock_open"] == "never" { hovering = false }
     let wasOpen = isOpen; isOpen = hovering || asking != nil
     let ear: CGFloat = 16, dotsW = CGFloat(agents.count) * 15
     let side = max(52, dotsW) + ear                                                   // both ears the same: the notch stays centred
@@ -178,7 +191,7 @@ func render() {
     island.frame = NSRect(x: 0, y: 0, width: w, height: h); island.needsDisplay = true
 
     // the bar: eyes on the left ear, one dot per agent on the right
-    let eye = agents.contains { $0.state == "ask" } ? orange : blue
+    let eye = agents.contains { $0.state == "ask" } ? askColor : workColor
     let y = h - bar / 2
     for x in [ear, ear + 16] {
         let e = NSView(frame: NSRect(x: x, y: y - 3, width: 12, height: 6)); e.wantsLayer = true
@@ -212,7 +225,7 @@ func render() {
         if a.allow { parts.append(Button("Allow", fill: orange, ink: rgb("#111113"), frame: NSRect(x: bx, y: bottom - 30, width: 76, height: 28)) { answer(a, "allow") }); bx += 84 }
         parts.append(Button("Deny", fill: rgb("#1E1E22"), ink: .white, frame: NSRect(x: bx, y: bottom - 30, width: 76, height: 28)) { answer(a, "deny") }); bx += 84
         parts.append(Button("In terminal", fill: .clear, ink: NSColor(white: 0.55, alpha: 1), frame: NSRect(x: bx, y: bottom - 30, width: 92, height: 28)) { answer(a, "terminal") })
-        for (i, p) in parts.enumerated() { island.addSubview(p); if !wasOpen { rise(p, delay: 0.06 + Double(i) * 0.04) } }
+        for (i, p) in parts.enumerated() { island.addSubview(p); if !wasOpen { rise(p, delay: 0.03 + Double(i) * 0.02) } }
     }
 
     // hover: every agent, what it is doing, the same answers
@@ -233,14 +246,14 @@ func render() {
                 row.addSubview(Button("Deny", fill: rgb("#1E1E22"), ink: .white, frame: NSRect(x: bx, y: 11, width: 58, height: 26)) { answer(a, "deny") })
                 if a.allow { bx -= 64; row.addSubview(Button("Allow", fill: orange, ink: rgb("#111113"), frame: NSRect(x: bx, y: 11, width: 58, height: 26)) { answer(a, "allow") }) }
             }
-            island.addSubview(row); if !wasOpen { rise(row, delay: 0.05 + Double(i) * 0.045) }
+            island.addSubview(row); if !wasOpen { rise(row, delay: 0.02 + Double(i) * 0.02) }
             ry -= 54
         }
     }
 }
 island.onHover = { inside in
-    if inside { leaveAt = .distantFuture; if !hovering { hovering = true; render() } }
-    else { leaveAt = Date().addingTimeInterval(0.35) }
+    if inside { if !hovering { hovering = true; render() } }
+    else if hovering { hovering = false; render() }
 }
 
 // ---- events -------------------------------------------------------------------------------------------------------
@@ -283,7 +296,6 @@ func poll() {
         }
         try? fm.removeItem(atPath: p); handle(e); changed = true
     }
-    if Date() > leaveAt { leaveAt = .distantFuture; hovering = false; changed = true }
     if isOpen, !hovering, !agents.contains(where: { $0.waiting }) { changed = true }    // the wait ran out: fold back
     if changed { render() }
 }
