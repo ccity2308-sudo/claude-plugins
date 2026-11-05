@@ -1,0 +1,15 @@
+{
+  "name": "ncloud",
+  "owner": { "name": "n.cloud", "email": "get.ncloud@gmail.com" },
+  "metadata": { "description": "Small, useful Claude Code plugins from n.cloud (getncloud.com)" },
+  "plugins": [
+    {
+      "name": "blink",
+      "source": "./plugins/blink",
+      "description": "A sound and a small card when Claude Code or Codex needs you or is done, with Allow / Deny right on the card. Stop babysitting the terminal.",
+      "version": "0.6.0",
+      "category": "productivity",
+      "keywords": ["notification", "sound", "permission", "approval", "hooks"]
+    }
+  ]
+}

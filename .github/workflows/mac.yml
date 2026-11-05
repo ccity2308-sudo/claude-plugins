@@ -1,0 +1,34 @@
+name: mac
+on: [push, workflow_dispatch]
+jobs:
+  notch:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the hook script
+        run: sh -n plugins/blink/scripts/bell.sh
+      - name: Build the notch helper
+        run: swiftc -O -o /tmp/notch plugins/blink/scripts/notch.swift
+      - name: Run it with three agents
+        run: |
+          S=/tmp/blink; mkdir -p $S/spool $S/replies
+          ev() { printf 'agent=%s\nkind=%s\nkey=%s\nproject=%s\nsession=%s\n%s' "$1" "$2" "$3" "$4" "$5" "$6" > "$S/spool/$3-$2.tmp"; mv "$S/spool/$3-$2.tmp" "$S/spool/$3-$2.evt"; }
+          /tmp/notch $S /tmp/none.conf & P=$!
+          ev claude work a getncloud 'Fix the checkout page' ''
+          ev claude work b api 'Migrate the users table' ''
+          ev codex done c landing 'Speed up the hero' ''
+          sleep 2; kill -0 $P
+          screencapture -x /tmp/bar.png || true
+          printf '{"tool_name":"Bash","tool_input":{"command":"npm run migrate"}}' > $S/raw.json
+          ev claude ask b api 'Migrate the users table' "title=Needs you
+          msg=Allow this command?
+          reply=r1
+          wait=20
+          raw=$S/raw.json
+          "
+          sleep 2; kill -0 $P
+          screencapture -x /tmp/ask.png || true
+          kill $P
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: shots, path: /tmp/*.png, if-no-files-found: ignore }
