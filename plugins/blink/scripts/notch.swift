@@ -24,6 +24,7 @@ func rgb(_ hex: String) -> NSColor {
 let orange = rgb("#FF7A12")
 let palette = ["#B18CFF", "#4CC38A", "#FF6FAE", "#F5D04E", "#3FD0D4", "#FF8A70", "#9FB4C7", "#C8A27A"]
 let expoOut = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)                  // the site's easing
+var panelTarget = NSRect.zero
 var speed = 1.0, position = "top-center", attached = true                            // from the settings file, read on every render
 
 func readConf() -> [String: String] {
@@ -153,7 +154,7 @@ func place(_ w: CGFloat, _ h: CGFloat, animated: Bool) {
     let s = notchScreen(), v = s.visibleFrame, m: CGFloat = 10
     let x = position.hasSuffix("left") ? v.minX + m : position.hasSuffix("right") ? v.maxX - m - w : s.frame.midX - w / 2
     let y = position == "top-center" ? s.frame.maxY - h : position.hasPrefix("top") ? v.maxY - m - h : v.minY + m
-    let f = NSRect(x: x, y: y, width: w, height: h)
+    let f = NSRect(x: x, y: y, width: w, height: h); panelTarget = f
     if !animated || speed == 0 { panel.setFrame(f, display: true); return }
     NSAnimationContext.runAnimationGroup { c in c.duration = 0.2 / speed; c.timingFunction = expoOut; panel.animator().setFrame(f, display: true) }
 }
@@ -167,6 +168,7 @@ func ago(_ d: Date) -> String { let m = Int(Date().timeIntervalSince(d) / 60); r
 func render() {
     island.subviews.forEach { $0.removeFromSuperview() }
     let conf = readConf()
+    menuBar(conf)
     speed = conf["anim"] == "0" ? 0 : (Double(conf["anim_speed"] ?? "") ?? 100) / 100
     position = conf["dock_pos"] ?? "top-center"; if position == "free" { position = "top-center" }   // dragging is Windows only for now
     attached = position == "top-center"
@@ -253,7 +255,35 @@ func render() {
 }
 island.onHover = { inside in
     if inside { if !hovering { hovering = true; render() } }
-    else if hovering { hovering = false; render() }
+    // leaving is judged in poll(): the island is still growing while the mouse runs for its far end
+}
+
+// ---- the icon in the menu bar ---------------------------------------------------------------------------------------
+final class Menu: NSObject {
+    @objc func settings() { NSWorkspace.shared.open(URL(fileURLWithPath: confPath)) }
+    @objc func quit() { exit(0) }
+}
+let menuActions = Menu()
+var statusItem: NSStatusItem?
+func eyesIcon() -> NSImage {
+    let i = NSImage(size: NSSize(width: 22, height: 16), flipped: false) { _ in
+        NSColor.black.setFill()
+        NSBezierPath(roundedRect: NSRect(x: 2, y: 6, width: 8, height: 4), xRadius: 1.5, yRadius: 1.5).fill()
+        NSBezierPath(roundedRect: NSRect(x: 12, y: 6, width: 8, height: 4), xRadius: 1.5, yRadius: 1.5).fill()
+        return true
+    }
+    i.isTemplate = true; return i                                                    // follows the light or dark menu bar
+}
+func menuBar(_ conf: [String: String]) {
+    if conf["tray"] == "0" { if let s = statusItem { NSStatusBar.system.removeStatusItem(s); statusItem = nil }; return }
+    if statusItem == nil { statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength); statusItem?.button?.image = eyesIcon() }
+    let m = NSMenu()
+    for a in agents { m.addItem(withTitle: "\(a.name): \(a.state == "ask" ? "needs you" : a.state == "work" ? "working" : "finished")", action: nil, keyEquivalent: "") }
+    if !agents.isEmpty { m.addItem(.separator()) }
+    for (t, s) in [("Settings file", #selector(Menu.settings)), ("Quit Blink", #selector(Menu.quit))] {
+        let i = m.addItem(withTitle: t, action: s, keyEquivalent: ""); i.target = menuActions
+    }
+    statusItem?.menu = m
 }
 
 // ---- events -------------------------------------------------------------------------------------------------------
@@ -296,16 +326,18 @@ func poll() {
         }
         try? fm.removeItem(atPath: p); handle(e); changed = true
     }
+    if hovering, !panelTarget.insetBy(dx: -8, dy: -8).contains(NSEvent.mouseLocation) { hovering = false; changed = true }
     if isOpen, !hovering, !agents.contains(where: { $0.waiting }) { changed = true }    // the wait ran out: fold back
     if changed { render() }
 }
-Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in poll() }
+Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in poll() }
 Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
     fm.createFile(atPath: stateDir + "/heartbeat", contents: Data())
     let now = Date(), before = agents.count                                          // quiet sessions drop off the bar
     agents.removeAll { let idle = now.timeIntervalSince($0.seen); return ($0.state == "done" && idle > 1800) || idle > 21600 }
     if agents.count != before { render() }
-    if agents.isEmpty && now.timeIntervalSince(lastActivity) > 14400 { exit(0) }
+    if agents.isEmpty && statusItem == nil && now.timeIntervalSince(lastActivity) > 14400 { exit(0) }
 }
 fm.createFile(atPath: stateDir + "/heartbeat", contents: Data())
+menuBar(readConf())
 app.run()
