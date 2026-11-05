@@ -185,8 +185,8 @@ func render() {
     let closedW = notch > 0 ? notch + side * 2 : 62 + dotsW + 16
     let w = isOpen ? max(closedW, 460) : closedW
     var rows: [Agent] = []; if isOpen { rows = hovering ? agents : (asking.map { [$0] } ?? []) }
-    let cardH: CGFloat = (!hovering && asking != nil) ? (asking!.command.isEmpty ? 104 : 132) : 0
-    let listH = hovering ? CGFloat(agents.count) * 54 + 10 : 0
+    let cardH: CGFloat = (!hovering && asking != nil) ? (asking!.command.isEmpty ? 94 : 126) : 0
+    let listH = hovering ? CGFloat(agents.count) * 54 + 16 : 0
     let h = bar + (isOpen ? cardH + listH : 0)
     place(w, h, animated: panel.isVisible)
     if !panel.isVisible { panel.orderFrontRegardless() }
@@ -201,7 +201,7 @@ func render() {
         e.layer?.shadowColor = eye.cgColor; e.layer?.shadowOpacity = 1; e.layer?.shadowRadius = 6; e.layer?.shadowOffset = .zero
         island.addSubview(e)
     }
-    var x = w - ear - dotsW + 3
+    var x = w - ear - dotsW + 6
     for a in agents {
         island.addSubview(Dot(rgb(a.color), size: 9, at: NSPoint(x: x, y: y - 4.5), breathe: a.state == "ask", dim: a.state == "done", pop: popKeys.contains(a.key)))
         x += 15
@@ -212,19 +212,19 @@ func render() {
     if !hovering, let a = asking {
         let top = h - bar - 8
         let head = label((a.agent == "codex" ? "CODEX" : "CLAUDE CODE") + (a.project.isEmpty ? "" : "  ·  " + a.project.uppercased()), 10, NSColor(white: 0.55, alpha: 1), mono: true)
-        head.frame = NSRect(x: 40, y: top - 14, width: w - 60, height: 14)
-        let d = Dot(rgb(a.color), size: 9, at: NSPoint(x: 20, y: top - 11), breathe: false, dim: false, pop: false)
-        let name = label(a.name, 14, .white, .semibold); name.frame = NSRect(x: 20, y: top - 36, width: w - 40, height: 19)
+        head.frame = NSRect(x: 36, y: top - 14, width: w - 52, height: 14)
+        let d = Dot(rgb(a.color), size: 9, at: NSPoint(x: 16, y: top - 11), breathe: false, dim: false, pop: false)
+        let name = label(a.name, 14, .white, .semibold); name.frame = NSRect(x: 16, y: top - 36, width: w - 32, height: 19)
         var parts: [NSView] = [d, head, name]
         var bottom = top - 40
         if !a.command.isEmpty {
-            let box = NSView(frame: NSRect(x: 20, y: bottom - 28, width: w - 40, height: 26)); box.wantsLayer = true
+            let box = NSView(frame: NSRect(x: 16, y: bottom - 28, width: w - 32, height: 26)); box.wantsLayer = true
             box.layer?.backgroundColor = rgb("#0C0C0E").cgColor; box.layer?.cornerRadius = 7; box.layer?.borderColor = rgb("#25252A").cgColor; box.layer?.borderWidth = 1
-            let c = label("$ " + a.command, 11.5, rgb("#E6E4DF"), mono: true); c.frame = NSRect(x: 9, y: 5, width: w - 58, height: 16); box.addSubview(c)
+            let c = label("$ " + a.command, 11.5, rgb("#E6E4DF"), mono: true); c.frame = NSRect(x: 9, y: 5, width: w - 50, height: 16); box.addSubview(c)
             parts.append(box); bottom -= 32
         }
-        var bx: CGFloat = 20   // Allow needs the whole command on screen: a cut-off line could hide what runs
-        let shown = ("$ " + a.command as NSString).size(withAttributes: [.font: NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular)]).width <= w - 62
+        var bx: CGFloat = 16   // Allow needs the whole command on screen: a cut-off line could hide what runs
+        let shown = ("$ " + a.command as NSString).size(withAttributes: [.font: NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular)]).width <= w - 54
         if a.allow && shown { parts.append(Button("Allow", fill: orange, ink: rgb("#111113"), frame: NSRect(x: bx, y: bottom - 30, width: 76, height: 28)) { answer(a, "allow") }); bx += 84 }
         parts.append(Button("Deny", fill: rgb("#1E1E22"), ink: .white, frame: NSRect(x: bx, y: bottom - 30, width: 76, height: 28)) { answer(a, "deny") }); bx += 84
         parts.append(Button("In terminal", fill: .clear, ink: NSColor(white: 0.55, alpha: 1), frame: NSRect(x: bx, y: bottom - 30, width: 92, height: 28)) { answer(a, "terminal") })
@@ -235,7 +235,7 @@ func render() {
     if hovering {
         var ry = h - bar - 54
         for (i, a) in rows.enumerated() {
-            let row = NSView(frame: NSRect(x: 10, y: ry, width: w - 20, height: 48)); row.wantsLayer = true
+            let row = NSView(frame: NSRect(x: 16, y: ry, width: w - 32, height: 48)); row.wantsLayer = true
             row.layer?.backgroundColor = (a.state == "ask" ? orange.withAlphaComponent(0.15) : NSColor(white: 1, alpha: 0.05)).cgColor; row.layer?.cornerRadius = 11
             row.addSubview(Dot(rgb(a.color), size: 11, at: NSPoint(x: 12, y: 18), breathe: false, dim: false, pop: false))
             let what = a.state == "ask" ? "needs you" : a.state == "work" ? "working" : "finished"
@@ -246,7 +246,7 @@ func render() {
             row.addSubview(t1); row.addSubview(t2)
             if a.waiting {
                 // no Allow here: the row does not show the command. Move away and the request shows it whole.
-                row.addSubview(Button("Deny", fill: rgb("#1E1E22"), ink: .white, frame: NSRect(x: w - 20 - 10 - 58, y: 11, width: 58, height: 26)) { answer(a, "deny") })
+                row.addSubview(Button("Deny", fill: rgb("#1E1E22"), ink: .white, frame: NSRect(x: w - 32 - 11 - 58, y: 11, width: 58, height: 26)) { answer(a, "deny") })
             }
             island.addSubview(row); if !wasOpen { rise(row, delay: 0.02 + Double(i) * 0.02) }
             ry -= 54

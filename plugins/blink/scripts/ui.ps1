@@ -354,24 +354,24 @@ $DOCK_XAML = @'
     <Border.RenderTransform><TranslateTransform x:Name="Drop"/></Border.RenderTransform>
     <StackPanel x:Name="Stack">
       <Grid x:Name="BarRow" Height="30" Background="Transparent">
-        <StackPanel x:Name="Eyes" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="15,0,0,0">
+        <StackPanel x:Name="Eyes" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="12,0,0,0">
           <Rectangle x:Name="EyeL" Width="11" Height="5" RadiusX="2" RadiusY="2" Margin="0,0,5,0"/>
           <Rectangle x:Name="EyeR" Width="11" Height="5" RadiusX="2" RadiusY="2"/>
         </StackPanel>
-        <StackPanel x:Name="Dots" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,13,0"/>
+        <StackPanel x:Name="Dots" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,9,0"/>
       </Grid>
-      <StackPanel x:Name="List" MaxHeight="0" Margin="9,0,9,0"/>
+      <StackPanel x:Name="List" MaxHeight="0" Margin="12,0,12,0"/>
     </StackPanel>
   </Border></Grid>
 </Window>
 '@
 $script:DockWin = $null; $script:DockOpen = $false; $script:DockHide = [DateTime]::MaxValue; $script:DockFresh = $false; $script:DockDown = $null
-function Dock-Width($n, $c) { $(if ($c['dock_eyes'] -ne '0') { 62 } else { 14 }) + [math]::Max(1, $n) * 15 + 12 }
+function Dock-Width($n, $c) { $(if ($c['dock_eyes'] -ne '0') { 61 } else { 18 }) + [math]::Max(1, $n) * 15 }
 function Dock-Size {                     # always from where it is now, so a quick in-and-out never jumps
   $c = $script:DC; $p = $script:DockWin.FindName('Pill'); $l = $script:DockWin.FindName('List')
   $open = $script:DockOpen -and $sessions.Count -gt 0
   $p.BeginAnimation([Windows.FrameworkElement]::WidthProperty, (AnimTo $(if ($open) { 440 } else { Dock-Width $sessions.Count $c }) 200))
-  $h = 0; if ($open) { $extra = 0; foreach ($x in $sessions.Values) { if ($x.state -eq 'ask' -and $x.allow -and $x.text) { $extra += 20 * [math]::Ceiling($x.text.Length / 38) + 6 } }; $h = $sessions.Count * 56 + 8 + $extra }
+  $h = 0; if ($open) { $extra = 0; foreach ($x in $sessions.Values) { if ($x.state -eq 'ask' -and $x.allow -and $x.text) { $extra += 20 * [math]::Ceiling($x.text.Length / 38) + 6 } }; $h = $sessions.Count * 56 + 16 + $extra }
   $l.BeginAnimation([Windows.FrameworkElement]::MaxHeightProperty, (AnimTo $h 200))
   # The bar is still growing while the mouse runs for its far end: the zone is already full size, so that run never counts as leaving.
   $z = $script:DockWin.FindName('Zone')
@@ -424,7 +424,9 @@ function Ago($t) { $m = [int]([DateTime]::Now - $t).TotalMinutes; if ($m -lt 1) 
 function Dock-Rows {
   $list = $script:DockWin.FindName('List'); $list.Children.Clear(); $i = 0
   foreach ($s in $sessions.Values) {
-    $b = New-Object Windows.Controls.Border; $b.CornerRadius = 11; $b.Padding = '11,8'; $b.Margin = '0,0,0,4'; $b.Background = Brush $(if ($s.state -eq 'ask') { '#26FF7A12' } else { '#16161A' })
+    $b = New-Object Windows.Controls.Border; $b.CornerRadius = 11; $b.Padding = '12,8'; $b.Background = Brush $(if ($s.state -eq 'ask') { '#26FF7A12' } else { '#16161A' })
+    $down = $script:DockWin.FindName('Pill').VerticalAlignment -eq 'Top'; $last = $i -eq $sessions.Count - 1   # the outer gap matches the sides, whichever way the list opens
+    $b.Margin = $(if ($down) { if ($last) { '0,0,0,12' } else { '0,0,0,4' } } else { if ($i -eq 0) { '0,12,0,4' } else { '0,0,0,4' } })
     $g = New-Object Windows.Controls.Grid
     foreach ($wd in 'Auto', '*', 'Auto') { $cd = New-Object Windows.Controls.ColumnDefinition; $cd.Width = $wd; [void]$g.ColumnDefinitions.Add($cd) }
     $dot = New-Object Windows.Shapes.Ellipse; $dot.Width = 11; $dot.Height = 11; $dot.Fill = Brush $s.color; $dot.Margin = '0,0,10,0'; $dot.Cursor = 'Hand'; $dot.Tag = $s.key; $dot.ToolTip = 'Change colour'
